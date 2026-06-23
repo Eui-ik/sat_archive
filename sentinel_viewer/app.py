@@ -35,6 +35,8 @@ ADMIN_EMAIL = os.environ.get("SAR_VIEWER_ADMIN_EMAIL", "euiik@innopam.com").stri
 SESSION_COOKIE = "sar_viewer_session"
 SESSION_TTL_SECONDS = int(os.environ.get("SAR_VIEWER_SESSION_TTL_SECONDS", str(7 * 24 * 60 * 60)))
 TRASH_RETENTION_DAYS = int(os.environ.get("SAR_VIEWER_TRASH_RETENTION_DAYS", "30"))
+AUTO_RESCAN_INTERVAL_SECONDS = int(os.environ.get("SAR_VIEWER_AUTO_RESCAN_INTERVAL_SECONDS", "600"))
+AUTO_RESCAN_ENABLED = os.environ.get("SAR_VIEWER_AUTO_RESCAN_ENABLED", "1") != "0"
 MAX_JSON_BODY_BYTES = int(os.environ.get("SAR_VIEWER_MAX_JSON_BODY_BYTES", str(64 * 1024)))
 MAX_SEARCH_TOP = int(os.environ.get("SAR_VIEWER_MAX_SEARCH_TOP", "200"))
 MAX_DAYS_BACK = int(os.environ.get("SAR_VIEWER_MAX_DAYS_BACK", str(365 * 10)))
@@ -789,6 +791,7 @@ class CatalogStore:
         self.data_dir = Path(data_dir).resolve()
         self.trash_dir = self.data_dir / ".trash"
         self.exclusions = exclusions
+        self.lock = threading.RLock()
         self.scenes = []
         self.summary = {}
         self.rescan()
@@ -848,33 +851,36 @@ class CatalogStore:
         }
 
     def rescan(self):
-        self.purge_expired_trash()
-        raw_scenes = scan_catalog(self.data_dir)
-        excluded_ids = self.exclusions.ids()
-        raw_scenes = [scene for scene in raw_scenes if scene["id"] not in excluded_ids]
-        raw_summary = summarize(raw_scenes)
-        self.scenes = [to_common_scene(scene) for scene in raw_scenes]
-        self.summary = {
-            "scene_count": len(self.scenes),
-            "error_count": 0,
-            "excluded_count": self.exclusions.count(),
-            "trash_count": self.exclusions.trash_count(),
-            "trash_retention_days": TRASH_RETENTION_DAYS,
-            "families": {name: len([s for s in self.scenes if s["satellite_family"] == name]) for name in raw_summary["collections"]},
-            "missions": raw_summary["mission_counts"],
-            "orbit_directions": raw_summary["direction_counts"],
-            "months": raw_summary["month_counts"],
-            "date_min": raw_summary["date_start"],
-            "date_max": raw_summary["date_end"],
-            "total_safe_size": sum(scene["safe_size"] for scene in self.scenes),
-            "total_safe_size_label": human_size(sum(scene["safe_size"] for scene in self.scenes)),
-            "supported_adapters": ["sentinel1_safe", "kompsat3_directory", "kompsat5_directory"],
-            "future_ready": ["Sentinel-2 SAFE", "Landsat Collection", "GeoTIFF scenes"],
-            "source_summary": raw_summary,
-        }
+        with self.lock:
+            self.purge_expired_trash()
+            raw_scenes = scan_catalog(self.data_dir)
+            excluded_ids = self.exclusions.ids()
+            raw_scenes = [scene for scene in raw_scenes if scene["id"] not in excluded_ids]
+            raw_summary = summarize(raw_scenes)
+            self.scenes = [to_common_scene(scene) for scene in raw_scenes]
+            self.summary = {
+                "scene_count": len(self.scenes),
+                "error_count": 0,
+                "excluded_count": self.exclusions.count(),
+                "trash_count": self.exclusions.trash_count(),
+                "trash_retention_days": TRASH_RETENTION_DAYS,
+                "auto_rescan_interval_seconds": AUTO_RESCAN_INTERVAL_SECONDS if AUTO_RESCAN_ENABLED else 0,
+                "families": {name: len([s for s in self.scenes if s["satellite_family"] == name]) for name in raw_summary["collections"]},
+                "missions": raw_summary["mission_counts"],
+                "orbit_directions": raw_summary["direction_counts"],
+                "months": raw_summary["month_counts"],
+                "date_min": raw_summary["date_start"],
+                "date_max": raw_summary["date_end"],
+                "total_safe_size": sum(scene["safe_size"] for scene in self.scenes),
+                "total_safe_size_label": human_size(sum(scene["safe_size"] for scene in self.scenes)),
+                "supported_adapters": ["sentinel1_safe", "kompsat3_directory", "kompsat5_directory"],
+                "future_ready": ["Sentinel-2 SAFE", "Landsat Collection", "GeoTIFF scenes"],
+                "source_summary": raw_summary,
+            }
 
     def filtered_scenes(self, params):
-        scenes = self.scenes
+        with self.lock:
+            scenes = list(self.scenes)
         query = params.get("q", [""])[0].lower().strip()
         mission = params.get("mission", [""])[0]
         direction = params.get("direction", [""])[0]
@@ -903,9 +909,10 @@ class CatalogStore:
         return scenes
 
     def scene_by_id(self, scene_id):
-        for scene in self.scenes:
-            if scene["id"] == scene_id:
-                return scene
+        with self.lock:
+            for scene in self.scenes:
+                if scene["id"] == scene_id:
+                    return json.loads(json.dumps(scene))
         return None
 
     def exclude_to_trash(self, scene_id, reason, actor_email):
@@ -1807,6 +1814,29 @@ def local_ip():
         return "127.0.0.1"
 
 
+def start_auto_rescan(store):
+    if not AUTO_RESCAN_ENABLED or AUTO_RESCAN_INTERVAL_SECONDS <= 0:
+        print("Auto rescan disabled", flush=True)
+        return
+
+    def worker():
+        while True:
+            time.sleep(AUTO_RESCAN_INTERVAL_SECONDS)
+            try:
+                store.rescan()
+                print(
+                    "Auto rescan complete: "
+                    f"{store.summary.get('scene_count', 0)} scene(s)",
+                    flush=True,
+                )
+            except Exception as error:
+                print(f"Auto rescan failed: {error}", flush=True)
+
+    thread = threading.Thread(target=worker, name="auto-rescan", daemon=True)
+    thread.start()
+    print(f"Auto rescan interval: {AUTO_RESCAN_INTERVAL_SECONDS} seconds", flush=True)
+
+
 def main():
     import argparse
 
@@ -1825,6 +1855,7 @@ def main():
     auth = AuthStore(args.db_path, ADMIN_EMAIL)
     store = CatalogStore(data_dir, exclusions)
     downloads = DownloadManager(data_dir, exclusions, store)
+    start_auto_rescan(store)
     server = ReusableThreadingHTTPServer((args.host, args.port), make_handler(store, downloads, auth))
     print(f"Satellite viewer serving {store.summary['scene_count']} scene(s)", flush=True)
     print(f"Local:   http://127.0.0.1:{args.port}", flush=True)

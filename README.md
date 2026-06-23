@@ -27,6 +27,8 @@
 
 휴지통 파일은 `/Volumes/SAT/.trash` 아래에 보관됩니다. 기본 보관 기간은 30일입니다.
 
+새 제품 폴더를 데이터 위치에 복사하면 플랫폼이 10분마다 자동 재스캔하여 반영합니다. 복사 중인 제품은 임시 파일이 있거나 최근 수정된 상태로 판단되면 다음 스캔까지 목록에 올리지 않습니다.
+
 ## 실행
 
 `.env` 파일을 만들고 필요한 값을 설정합니다.
@@ -63,6 +65,8 @@ euiik@innopam.com
 | `SAR_VIEWER_ADMIN_EMAIL` | 시스템 관리자 이메일 | `euiik@innopam.com` |
 | `SAR_VIEWER_ADMIN_PASSWORD` | 관리자 비밀번호 | 없음 |
 | `SAR_VIEWER_TRASH_RETENTION_DAYS` | 휴지통 보관 기간 | `30` |
+| `SAR_VIEWER_AUTO_RESCAN_INTERVAL_SECONDS` | 자동 재스캔 간격 | `600` |
+| `SAR_VIEWER_STABLE_PRODUCT_SECONDS` | 복사 중으로 볼 최근 수정 시간 | `120` |
 | `CDSE_USERNAME` | Copernicus Data Space 계정 | 없음 |
 | `CDSE_PASSWORD` | Copernicus Data Space 비밀번호 | 없음 |
 
@@ -83,4 +87,3 @@ python3 sentinel_viewer/app.py --data-dir /Volumes/SAT --host 0.0.0.0 --port 876
 - `viewer_state/`
 - `*.sqlite3`
 - `__pycache__/`
-

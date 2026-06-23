@@ -1,6 +1,8 @@
 import csv
 import json
+import os
 import re
+import time
 import zipfile
 from collections import Counter, defaultdict
 from datetime import datetime
@@ -28,6 +30,15 @@ NS = {
     "s1": "http://www.esa.int/safe/sentinel-1.0/sentinel-1",
     "gml": "http://www.opengis.net/gml",
 }
+
+IN_PROGRESS_SUFFIXES = (
+    ".part",
+    ".tmp",
+    ".download",
+    ".crdownload",
+    ".partial",
+)
+STABLE_PRODUCT_SECONDS = int(os.environ.get("SAR_VIEWER_STABLE_PRODUCT_SECONDS", "120"))
 
 
 def human_size(size):
@@ -252,6 +263,26 @@ def directory_size(path):
     return total
 
 
+def has_in_progress_files(path):
+    for item in path.rglob("*"):
+        if item.name.startswith(".extracting_"):
+            return True
+        if item.is_file() and item.name.lower().endswith(IN_PROGRESS_SUFFIXES):
+            return True
+    return False
+
+
+def is_recently_modified(path, stable_seconds=STABLE_PRODUCT_SECONDS):
+    try:
+        return time.time() - path.stat().st_mtime < stable_seconds
+    except FileNotFoundError:
+        return True
+
+
+def is_stable_product_dir(path):
+    return not has_in_progress_files(path) and not is_recently_modified(path)
+
+
 def parse_sentinel1_safe(safe_dir, zip_dir):
     name = safe_dir.name.removesuffix(".SAFE")
     match = S1_NAME_RE.match(name)
@@ -455,6 +486,8 @@ def scan_catalog(data_dir):
 
     sentinel_root = data_path / "Sentinel-1" if (data_path / "Sentinel-1").exists() else data_path
     for safe_dir in sorted(sentinel_root.glob("*.SAFE")):
+        if not is_stable_product_dir(safe_dir):
+            continue
         scene = parse_sentinel1_safe(safe_dir, sentinel_root)
         if scene:
             scenes.append(scene)
@@ -462,6 +495,8 @@ def scan_catalog(data_dir):
     kompsat3_root = data_path / "Kompsat3"
     if kompsat3_root.exists():
         for product_dir in sorted(path for path in kompsat3_root.iterdir() if path.is_dir()):
+            if not is_stable_product_dir(product_dir):
+                continue
             scene = parse_kompsat3(product_dir)
             if scene:
                 scenes.append(scene)
@@ -469,6 +504,8 @@ def scan_catalog(data_dir):
     kompsat5_root = data_path / "Kompsat5"
     if kompsat5_root.exists():
         for product_dir in sorted(path for path in kompsat5_root.iterdir() if path.is_dir()):
+            if not is_stable_product_dir(product_dir):
+                continue
             scene = parse_kompsat5(product_dir)
             if scene:
                 scenes.append(scene)
