@@ -1,0 +1,32 @@
+services:
+  sar-viewer:
+    build:
+      context: .
+      args:
+        BASE_IMAGE: "${BASE_IMAGE:-python:3.13-slim}"
+    container_name: sar-viewer
+    restart: unless-stopped
+    ports:
+      - "${SAR_VIEWER_PORT:-8765}:8765"
+    volumes:
+      - /Volumes/SAT:/data:rw
+      - ./viewer_state:/state:rw
+    environment:
+      TZ: Asia/Seoul
+      SAR_VIEWER_DB: /state/sar_viewer.sqlite3
+      SAR_VIEWER_ADMIN_EMAIL: euiik@innopam.com
+      SAR_VIEWER_ADMIN_PASSWORD: ${SAR_VIEWER_ADMIN_PASSWORD:-}
+      CDSE_USERNAME: ${CDSE_USERNAME:-}
+      CDSE_PASSWORD: ${CDSE_PASSWORD:-}
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8765/', timeout=3).read()",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s

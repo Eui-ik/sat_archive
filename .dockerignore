@@ -1,0 +1,15 @@
+__pycache__/
+*.py[cod]
+.DS_Store
+.git/
+.agents/
+.codex/
+
+sentinel1_jeju/
+viewer_state/
+*.zip
+*.SAFE/
+viewer_catalog.json
+viewer_inventory.csv
+sentinel1_download_report.txt
+sentinel1_download_inventory.csv

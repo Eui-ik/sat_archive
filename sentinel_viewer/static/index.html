@@ -1,0 +1,295 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>위성 이미지 아카이브</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body>
+    <section class="login-screen" id="loginScreen" hidden>
+      <form class="login-panel" id="loginForm">
+        <h2>위성 이미지 아카이브</h2>
+        <label>
+          <span>이메일</span>
+          <input id="loginEmail" type="email" autocomplete="username" value="euiik@innopam.com" required>
+        </label>
+        <label>
+          <span>비밀번호</span>
+          <input id="loginPassword" type="password" autocomplete="current-password" required>
+        </label>
+        <button class="primary-button" type="submit">로그인</button>
+        <p class="login-error" id="loginError" role="alert"></p>
+      </form>
+    </section>
+
+    <div class="app-shell">
+      <aside class="sidebar">
+        <header class="brand-bar">
+          <div class="brand-title">
+            <h1>위성 이미지 아카이브</h1>
+            <p id="dateRange">목록 불러오는 중</p>
+          </div>
+          <div class="brand-actions">
+            <span class="user-email" id="userEmail"></span>
+            <button class="icon-button" id="rescanButton" title="목록 새로고침" aria-label="목록 새로고침">
+              <i data-lucide="refresh-cw"></i>
+            </button>
+            <button class="icon-button" id="downloadButton" title="센티널 이미지 다운로드" aria-label="센티널 이미지 다운로드">
+              <i data-lucide="cloud-download"></i>
+            </button>
+            <button class="icon-button" id="trashButton" title="휴지통" aria-label="휴지통">
+              <i data-lucide="trash-2"></i>
+            </button>
+            <button class="icon-button" id="userManageButton" title="사용자 관리" aria-label="사용자 관리" hidden>
+              <i data-lucide="users"></i>
+            </button>
+            <button class="icon-button" id="logoutButton" title="로그아웃" aria-label="로그아웃">
+              <i data-lucide="log-out"></i>
+            </button>
+          </div>
+        </header>
+
+        <section class="stats-grid" aria-label="목록 요약">
+          <div class="stat">
+            <span>이미지</span>
+            <strong id="sceneCount">0</strong>
+          </div>
+          <div class="stat">
+            <span>용량</span>
+            <strong id="totalSize">0 GB</strong>
+          </div>
+          <div class="stat">
+            <span>오류</span>
+            <strong id="errorCount">0</strong>
+          </div>
+          <div class="stat">
+            <span>제외</span>
+            <strong id="excludedCount">0</strong>
+          </div>
+        </section>
+
+        <section class="filters" aria-label="필터">
+          <label class="search-field">
+            <i data-lucide="search"></i>
+            <input id="queryInput" type="search" placeholder="이름, 날짜, 궤도 검색">
+          </label>
+
+          <div class="filter-row">
+            <select id="familySelect" aria-label="위성군">
+              <option value="">전체 위성군</option>
+            </select>
+            <select id="missionSelect" aria-label="미션">
+              <option value="">전체 미션</option>
+            </select>
+          </div>
+
+          <div class="filter-row">
+            <select id="directionSelect" aria-label="궤도 방향">
+              <option value="">전체 궤도</option>
+            </select>
+            <a class="icon-button link-button" id="csvLink" href="/api/export.csv" title="CSV 내보내기" aria-label="CSV 내보내기">
+              <i data-lucide="download"></i>
+            </a>
+          </div>
+
+          <div class="filter-row">
+            <input id="dateFromInput" type="date" aria-label="시작 날짜">
+            <input id="dateToInput" type="date" aria-label="종료 날짜">
+          </div>
+        </section>
+
+        <div class="list-header">
+          <span id="filteredCount">0개 이미지</span>
+          <button class="text-button" id="fitButton">지도 맞춤</button>
+        </div>
+
+        <main class="scene-list" id="sceneList" aria-label="이미지 목록"></main>
+      </aside>
+
+      <section class="map-panel">
+        <div id="map"></div>
+        <div class="map-toolbar">
+          <button class="icon-button" id="toggleListButton" title="목록 접기/펼치기" aria-label="목록 접기/펼치기">
+            <i data-lucide="panel-left"></i>
+          </button>
+          <button class="icon-button" id="selectAreaButton" title="다운로드 영역 선택" aria-label="다운로드 영역 선택">
+            <i data-lucide="scan"></i>
+          </button>
+          <button class="icon-button" id="clearSelectionButton" title="선택 해제" aria-label="선택 해제">
+            <i data-lucide="x"></i>
+          </button>
+        </div>
+        <div class="area-selection-hint" id="areaSelectionHint" hidden>
+          <span>지도에서 드래그하여 다운로드 영역을 선택하세요.</span>
+          <button class="text-button" id="cancelAreaSelectionButton" type="button">취소</button>
+        </div>
+        <section class="detail-panel" id="detailPanel" aria-label="이미지 상세 정보">
+          <div class="empty-state">지도 영역 또는 이미지를 선택하세요</div>
+        </section>
+      </section>
+    </div>
+
+    <section class="download-screen" id="downloadScreen" hidden>
+      <header class="download-header">
+        <div>
+          <h2>센티널 다운로드</h2>
+          <p>선택 영역과 교차하는 Sentinel-1 이미지를 검색하고 새 이미지 자료를 다운로드합니다.</p>
+        </div>
+        <button class="icon-button" id="closeDownloadButton" title="지도로 돌아가기" aria-label="지도로 돌아가기">
+          <i data-lucide="x"></i>
+        </button>
+      </header>
+
+      <main class="download-layout">
+        <section class="download-controls" aria-label="다운로드 설정">
+          <form class="download-form" id="downloadSearchForm">
+            <label>
+              <span>시작 월</span>
+              <input id="downloadFromInput" type="month">
+            </label>
+            <label>
+              <span>종료 월</span>
+              <input id="downloadToInput" type="month">
+            </label>
+            <label>
+              <span>검색 개수</span>
+              <input id="downloadTopInput" type="number" min="1" max="100" value="20">
+            </label>
+            <div class="area-control">
+              <span id="downloadAreaLabel">영역: 제주 기본값</span>
+              <button class="text-button" id="downloadSelectAreaButton" type="button">
+                지도에서 선택
+              </button>
+              <button class="text-button" id="downloadClearAreaButton" type="button">
+                제주 기본값 사용
+              </button>
+            </div>
+            <div class="download-filter-options">
+              <label>
+                <input id="hideDownloadedCheckbox" type="checkbox" checked>
+                <span>다운로드 완료 숨기기</span>
+              </label>
+              <label>
+                <input id="hideExcludedCheckbox" type="checkbox" checked>
+                <span>제외 항목 숨기기</span>
+              </label>
+            </div>
+            <div class="download-actions">
+              <button class="text-button" id="downloadRefreshButton" type="button">
+                상태 새로고침
+              </button>
+              <button class="text-button" id="downloadSearchButton" type="submit">
+                검색
+              </button>
+              <button class="primary-button" id="downloadStartButton" type="button">
+                다운로드 시작
+              </button>
+            </div>
+          </form>
+
+          <div class="download-status" id="downloadStatus">
+            <div class="empty-state">실행 중인 다운로드 작업이 없습니다</div>
+          </div>
+        </section>
+
+        <section class="download-products" aria-label="다운로드 후보">
+          <div class="download-section-header">
+            <h3>이미지 후보</h3>
+            <span id="downloadProductCount">0개</span>
+          </div>
+          <div class="download-product-list" id="downloadProductList">
+            <div class="empty-state">다운로드할 이미지를 검색하세요</div>
+          </div>
+        </section>
+
+        <section class="download-log-panel" aria-label="다운로드 로그">
+          <div class="download-section-header">
+            <h3>로그</h3>
+          </div>
+          <pre class="download-logs" id="downloadLogs">대기 중</pre>
+        </section>
+      </main>
+    </section>
+
+    <section class="user-screen" id="userScreen" hidden>
+      <header class="download-header">
+        <div>
+          <h2>사용자 관리</h2>
+          <p>플랫폼 접속 사용자와 권한을 관리합니다.</p>
+        </div>
+        <button class="icon-button" id="closeUserButton" title="닫기" aria-label="닫기">
+          <i data-lucide="x"></i>
+        </button>
+      </header>
+
+      <main class="user-layout">
+        <section class="user-controls" aria-label="사용자 추가">
+          <h3>사용자 추가</h3>
+          <form class="user-form" id="userCreateForm">
+            <label>
+              <span>이메일</span>
+              <input id="newUserEmail" type="email" autocomplete="off" required>
+            </label>
+            <label>
+              <span>권한</span>
+              <select id="newUserRole">
+                <option value="user">일반 사용자</option>
+                <option value="admin">관리자</option>
+              </select>
+            </label>
+            <label>
+              <span>초기 비밀번호</span>
+              <input id="newUserPassword" type="password" autocomplete="new-password" minlength="8" required>
+            </label>
+            <button class="primary-button" type="submit">사용자 추가</button>
+            <p class="login-error" id="userError" role="alert"></p>
+          </form>
+        </section>
+
+        <section class="user-list-panel" aria-label="사용자 목록">
+          <div class="download-section-header">
+            <h3>사용자 목록</h3>
+            <button class="text-button" id="userRefreshButton" type="button">새로고침</button>
+          </div>
+          <div class="user-list" id="userList">
+            <div class="empty-state">사용자 목록을 불러오는 중입니다</div>
+          </div>
+        </section>
+      </main>
+    </section>
+
+    <section class="trash-screen" id="trashScreen" hidden>
+      <header class="download-header">
+        <div>
+          <h2>휴지통</h2>
+          <p>제외된 이미지를 복구하거나 관리자가 영구 삭제할 수 있습니다.</p>
+        </div>
+        <button class="icon-button" id="closeTrashButton" title="닫기" aria-label="닫기">
+          <i data-lucide="x"></i>
+        </button>
+      </header>
+
+      <main class="trash-layout">
+        <section class="trash-panel" aria-label="휴지통 이미지">
+          <div class="download-section-header">
+            <h3>휴지통 이미지</h3>
+            <div class="trash-actions">
+              <button class="text-button" id="trashRefreshButton" type="button">새로고침</button>
+              <button class="danger-button compact" id="trashEmptyButton" type="button" hidden>휴지통 비우기</button>
+            </div>
+          </div>
+          <p class="trash-note" id="trashNote"></p>
+          <div class="trash-list" id="trashList">
+            <div class="empty-state">휴지통 목록을 불러오는 중입니다</div>
+          </div>
+        </section>
+      </main>
+    </section>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+    <script src="/app.js"></script>
+  </body>
+</html>

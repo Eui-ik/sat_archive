@@ -1,0 +1,15 @@
+.env
+
+# Python caches
+__pycache__/
+*.py[cod]
+
+# Local runtime state
+viewer_state/
+*.sqlite3
+*.sqlite3-*
+
+# Large/local satellite data and generated reports
+sentinel1_jeju/
+sentinel1_download_inventory.csv
+sentinel1_download_report.txt
