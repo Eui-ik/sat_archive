@@ -9,6 +9,9 @@ const state = {
   downloadPollId: null,
   downloadArea: null,
   downloadAreaLayer: null,
+  aoiArea: null,
+  aoiAreaLayer: null,
+  areaSelectionMode: "filter",
   areaSelecting: false,
   areaStartLatLng: null,
   areaDraftLayer: null,
@@ -74,11 +77,15 @@ const els = {
   directionSelect: document.getElementById("directionSelect"),
   dateFromInput: document.getElementById("dateFromInput"),
   dateToInput: document.getElementById("dateToInput"),
+  aoiAreaLabel: document.getElementById("aoiAreaLabel"),
+  aoiSelectButton: document.getElementById("aoiSelectButton"),
+  aoiClearButton: document.getElementById("aoiClearButton"),
   csvLink: document.getElementById("csvLink"),
   rescanButton: document.getElementById("rescanButton"),
   fitButton: document.getElementById("fitButton"),
   selectAreaButton: document.getElementById("selectAreaButton"),
   areaSelectionHint: document.getElementById("areaSelectionHint"),
+  areaSelectionHintText: document.getElementById("areaSelectionHintText"),
   cancelAreaSelectionButton: document.getElementById("cancelAreaSelectionButton"),
   toggleListButton: document.getElementById("toggleListButton"),
   clearSelectionButton: document.getElementById("clearSelectionButton"),
@@ -133,6 +140,7 @@ function currentParams() {
   if (els.directionSelect.value) params.set("direction", els.directionSelect.value);
   if (els.dateFromInput.value) params.set("from", els.dateFromInput.value);
   if (els.dateToInput.value) params.set("to", els.dateToInput.value);
+  if (state.aoiArea) params.set("bbox", state.aoiArea.join(","));
   return params;
 }
 
@@ -184,14 +192,24 @@ function bboxParam() {
   return state.downloadArea ? state.downloadArea.join(",") : "";
 }
 
+function compactAreaLabel(area) {
+  const [west, south, east, north] = area;
+  return `서 ${west.toFixed(3)}, 남 ${south.toFixed(3)}, 동 ${east.toFixed(3)}, 북 ${north.toFixed(3)}`;
+}
+
 function areaLabel() {
   if (!state.downloadArea) return "영역: 제주 기본값";
-  const [west, south, east, north] = state.downloadArea;
-  return `영역: 서 ${west.toFixed(3)}, 남 ${south.toFixed(3)}, 동 ${east.toFixed(3)}, 북 ${north.toFixed(3)}`;
+  return `영역: ${compactAreaLabel(state.downloadArea)}`;
 }
 
 function updateDownloadAreaLabel() {
   els.downloadAreaLabel.textContent = areaLabel();
+}
+
+function updateAoiAreaLabel() {
+  els.aoiAreaLabel.textContent = state.aoiArea
+    ? `관심지역: ${compactAreaLabel(state.aoiArea)}`
+    : "관심지역: 전체";
 }
 
 function drawDownloadAreaLayer() {
@@ -224,6 +242,39 @@ function clearDownloadArea() {
     state.downloadAreaLayer = null;
   }
   updateDownloadAreaLabel();
+}
+
+function drawAoiAreaLayer() {
+  if (state.aoiAreaLayer) {
+    state.aoiAreaLayer.remove();
+    state.aoiAreaLayer = null;
+  }
+  if (!state.aoiArea) return;
+  const [west, south, east, north] = state.aoiArea;
+  state.aoiAreaLayer = L.rectangle([[south, west], [north, east]], {
+    color: "#b45309",
+    weight: 3,
+    opacity: 0.95,
+    fillColor: "#f59e0b",
+    fillOpacity: 0.05,
+    dashArray: "10 6",
+  }).addTo(map);
+}
+
+function setAoiArea(bounds) {
+  state.aoiArea = bboxFromBounds(bounds);
+  drawAoiAreaLayer();
+  updateAoiAreaLabel();
+}
+
+async function clearAoiArea() {
+  state.aoiArea = null;
+  if (state.aoiAreaLayer) {
+    state.aoiAreaLayer.remove();
+    state.aoiAreaLayer = null;
+  }
+  updateAoiAreaLabel();
+  await loadScenes();
 }
 
 function showLogin(message = "") {
@@ -441,25 +492,36 @@ async function saveUser(card) {
   await loadUsers();
 }
 
-function beginAreaSelection() {
+function beginAreaSelection(mode = "filter") {
   closeDownloadScreen();
+  state.areaSelectionMode = mode;
   state.areaSelecting = true;
   state.areaStartLatLng = null;
+  els.areaSelectionHintText.textContent = mode === "download"
+    ? "지도에서 드래그하여 다운로드 검색 영역을 선택하세요."
+    : "지도에서 드래그하여 관심지역을 선택하세요.";
   els.areaSelectionHint.hidden = false;
   document.body.classList.add("area-selecting");
   map.dragging.disable();
   map.doubleClickZoom.disable();
 }
 
-function finishAreaSelection(bounds) {
+async function finishAreaSelection(bounds) {
+  const mode = state.areaSelectionMode;
   cancelAreaSelection(false);
-  setDownloadArea(bounds);
-  openDownloadScreen().catch(console.error);
+  if (mode === "download") {
+    setDownloadArea(bounds);
+    openDownloadScreen().catch(console.error);
+    return;
+  }
+  setAoiArea(bounds);
+  await loadScenes();
 }
 
 function cancelAreaSelection(removeDraft = true) {
   state.areaSelecting = false;
   state.areaStartLatLng = null;
+  state.areaSelectionMode = "filter";
   els.areaSelectionHint.hidden = true;
   document.body.classList.remove("area-selecting");
   map.dragging.enable();
@@ -500,7 +562,7 @@ function areaMouseUp(event) {
   }
   state.areaDraftLayer.remove();
   state.areaDraftLayer = null;
-  finishAreaSelection(bounds);
+  finishAreaSelection(bounds).catch(console.error);
 }
 
 function stateLabel(stateName) {
@@ -791,7 +853,9 @@ function directionClass(direction) {
 }
 
 function renderSceneList() {
-  els.filteredCount.textContent = `${state.scenes.length}개 이미지`;
+  els.filteredCount.textContent = state.aoiArea
+    ? `관심지역 결과 ${state.scenes.length}개`
+    : `${state.scenes.length}개 이미지`;
   els.sceneList.innerHTML = "";
 
   state.scenes.forEach((scene) => {
@@ -841,6 +905,7 @@ function renderMap(geojson) {
     },
   }).addTo(map);
 
+  drawAoiAreaLayer();
   fitMapToLayers();
 }
 
@@ -977,6 +1042,8 @@ function clearSelection() {
 function fitMapToLayers() {
   if (state.geoLayer && state.geoLayer.getLayers().length) {
     map.fitBounds(state.geoLayer.getBounds(), { padding: [28, 28] });
+  } else if (state.aoiAreaLayer) {
+    map.fitBounds(state.aoiAreaLayer.getBounds(), { padding: [28, 28] });
   }
 }
 
@@ -1058,7 +1125,7 @@ els.userList.addEventListener("click", async (event) => {
 els.downloadButton.addEventListener("click", openDownloadScreen);
 els.closeDownloadButton.addEventListener("click", closeDownloadScreen);
 els.downloadSearchForm.addEventListener("submit", searchDownloadProducts);
-els.downloadSelectAreaButton.addEventListener("click", beginAreaSelection);
+els.downloadSelectAreaButton.addEventListener("click", () => beginAreaSelection("download"));
 els.downloadClearAreaButton.addEventListener("click", clearDownloadArea);
 els.hideDownloadedCheckbox.addEventListener("change", () => renderDownloadProducts());
 els.hideExcludedCheckbox.addEventListener("change", () => renderDownloadProducts());
@@ -1070,8 +1137,10 @@ els.missionSelect.addEventListener("change", scheduleLoad);
 els.directionSelect.addEventListener("change", scheduleLoad);
 els.dateFromInput.addEventListener("change", scheduleLoad);
 els.dateToInput.addEventListener("change", scheduleLoad);
+els.aoiSelectButton.addEventListener("click", () => beginAreaSelection("filter"));
+els.aoiClearButton.addEventListener("click", () => clearAoiArea().catch(console.error));
 els.fitButton.addEventListener("click", fitMapToLayers);
-els.selectAreaButton.addEventListener("click", beginAreaSelection);
+els.selectAreaButton.addEventListener("click", () => beginAreaSelection("filter"));
 els.cancelAreaSelectionButton.addEventListener("click", () => cancelAreaSelection());
 els.clearSelectionButton.addEventListener("click", clearSelection);
 els.toggleListButton.addEventListener("click", () => {

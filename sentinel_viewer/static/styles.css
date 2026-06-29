@@ -671,7 +671,8 @@ p {
   display: block;
   margin-top: 4px;
   font-size: 16px;
-  overflow-wrap: anywhere;
+  white-space: nowrap;
+  overflow-wrap: normal;
 }
 
 .filters {

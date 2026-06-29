@@ -91,6 +91,25 @@ def parse_bbox(value):
     return [float(part) for part in parts]
 
 
+def bounds_intersect(bounds, bbox):
+    if not bounds or not bbox:
+        return False
+    if isinstance(bounds, (list, tuple)) and len(bounds) == 4:
+        bounds = {
+            "west": bounds[0],
+            "south": bounds[1],
+            "east": bounds[2],
+            "north": bounds[3],
+        }
+    west, south, east, north = bbox
+    return not (
+        bounds["east"] < west
+        or bounds["west"] > east
+        or bounds["north"] < south
+        or bounds["south"] > north
+    )
+
+
 def bounded_int(value, default, minimum, maximum, field_name):
     try:
         number = int(value if value not in (None, "") else default)
@@ -887,6 +906,7 @@ class CatalogStore:
         family = params.get("family", [""])[0]
         date_from = params.get("from", [""])[0]
         date_to = params.get("to", [""])[0]
+        bbox = parse_bbox(params.get("bbox", [""])[0]) if params.get("bbox", [""])[0] else None
 
         if query:
             scenes = [
@@ -906,6 +926,8 @@ class CatalogStore:
             scenes = [scene for scene in scenes if scene["date"] >= date_from]
         if date_to:
             scenes = [scene for scene in scenes if scene["date"] <= date_to]
+        if bbox:
+            scenes = [scene for scene in scenes if bounds_intersect(scene.get("bbox"), bbox)]
         return scenes
 
     def scene_by_id(self, scene_id):
@@ -1490,20 +1512,29 @@ def make_handler(store, downloads, auth):
                 self.send_json({"summary": store.summary, "errors": []})
                 return
             if parsed.path == "/api/scenes":
-                scenes = store.filtered_scenes(params)
-                user = self.require_user()
-                if not user:
-                    return
-                self.send_json({"scenes": scenes_for_user(scenes, user), "count": len(scenes)})
+                try:
+                    scenes = store.filtered_scenes(params)
+                    user = self.require_user()
+                    if not user:
+                        return
+                    self.send_json({"scenes": scenes_for_user(scenes, user), "count": len(scenes)})
+                except ValueError as error:
+                    self.send_json({"error": str(error)}, status=400)
                 return
             if parsed.path == "/api/footprints":
-                self.send_json(make_geojson(store.filtered_scenes(params)))
+                try:
+                    self.send_json(make_geojson(store.filtered_scenes(params)))
+                except ValueError as error:
+                    self.send_json({"error": str(error)}, status=400)
                 return
             if parsed.path == "/api/export.csv":
-                user = self.require_user()
-                if not user:
-                    return
-                write_csv_response(self, scenes_for_user(store.filtered_scenes(params), user))
+                try:
+                    user = self.require_user()
+                    if not user:
+                        return
+                    write_csv_response(self, scenes_for_user(store.filtered_scenes(params), user))
+                except ValueError as error:
+                    self.send_json({"error": str(error)}, status=400)
                 return
             if parsed.path == "/api/rescan":
                 if not self.require_admin():

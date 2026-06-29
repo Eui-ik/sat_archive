@@ -98,6 +98,16 @@
             <input id="dateFromInput" type="date" aria-label="시작 날짜">
             <input id="dateToInput" type="date" aria-label="종료 날짜">
           </div>
+
+          <div class="area-control">
+            <span id="aoiAreaLabel">관심지역: 전체</span>
+            <button class="text-button" id="aoiSelectButton" type="button">
+              지도에서 선택
+            </button>
+            <button class="text-button" id="aoiClearButton" type="button">
+              관심지역 해제
+            </button>
+          </div>
         </section>
 
         <div class="list-header">
@@ -114,7 +124,7 @@
           <button class="icon-button" id="toggleListButton" title="목록 접기/펼치기" aria-label="목록 접기/펼치기">
             <i data-lucide="panel-left"></i>
           </button>
-          <button class="icon-button" id="selectAreaButton" title="다운로드 영역 선택" aria-label="다운로드 영역 선택">
+          <button class="icon-button" id="selectAreaButton" title="관심지역 선택" aria-label="관심지역 선택">
             <i data-lucide="scan"></i>
           </button>
           <button class="icon-button" id="clearSelectionButton" title="선택 해제" aria-label="선택 해제">
@@ -122,7 +132,7 @@
           </button>
         </div>
         <div class="area-selection-hint" id="areaSelectionHint" hidden>
-          <span>지도에서 드래그하여 다운로드 영역을 선택하세요.</span>
+          <span id="areaSelectionHintText">지도에서 드래그하여 관심지역을 선택하세요.</span>
           <button class="text-button" id="cancelAreaSelectionButton" type="button">취소</button>
         </div>
         <section class="detail-panel" id="detailPanel" aria-label="이미지 상세 정보">
