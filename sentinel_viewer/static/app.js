@@ -89,6 +89,7 @@ const els = {
   cancelAreaSelectionButton: document.getElementById("cancelAreaSelectionButton"),
   toggleListButton: document.getElementById("toggleListButton"),
   clearSelectionButton: document.getElementById("clearSelectionButton"),
+  mapLegendItems: document.getElementById("mapLegendItems"),
 };
 
 const map = L.map("map", {
@@ -109,6 +110,16 @@ function colorForFamily(family) {
   if (family === "Kompsat5") return "#ea580c";
   if (family === "Cas-1" || family === "Cas1") return "#9333ea";
   return "#64748b";
+}
+
+function renderMapLegend(families = {}) {
+  const entries = Object.keys(families).sort();
+  els.mapLegendItems.innerHTML = entries.map((family) => `
+    <div class="legend-item">
+      <span class="legend-swatch" style="background:${colorForFamily(family)}"></span>
+      <span>${escapeHtml(family)}</span>
+    </div>
+  `).join("");
 }
 
 function colorForFeature(feature) {
@@ -841,6 +852,7 @@ function renderSummary(summary) {
   optionList(els.familySelect, summary.families, "전체 위성군");
   optionList(els.missionSelect, summary.missions, "전체 미션");
   optionList(els.directionSelect, summary.orbit_directions, "전체 궤도", directionLabel);
+  renderMapLegend(summary.families);
 }
 
 function sceneById(id) {
