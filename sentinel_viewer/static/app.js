@@ -103,11 +103,16 @@ L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
   attribution: "&copy; OpenStreetMap contributors",
 }).addTo(map);
 
+function colorForFamily(family) {
+  if (family === "Sentinel-1") return "#2563eb";
+  if (family === "Kompsat3") return "#16a34a";
+  if (family === "Kompsat5") return "#ea580c";
+  if (family === "Cas-1" || family === "Cas1") return "#9333ea";
+  return "#64748b";
+}
+
 function colorForFeature(feature) {
-  const direction = feature.properties.orbit_direction;
-  if (direction === "ASCENDING") return "#147c72";
-  if (direction === "DESCENDING") return "#2764b0";
-  return "#aa6a00";
+  return colorForFamily(feature.properties.family);
 }
 
 function styleForFeature(feature) {

@@ -480,6 +480,68 @@ def parse_kompsat5(product_dir):
     )
 
 
+def parse_cas1(product_dir):
+    aux_path = first_existing(product_dir, ["*_Aux.xml"])
+    if not aux_path:
+        return None
+
+    root = ET.parse(aux_path).getroot()
+    name = product_dir.name
+    quicklook_path = first_existing(product_dir, ["*_br.jpg", "*_BR.jpg"])
+    thumbnail_path = first_existing(product_dir, ["*_th.jpg", "*_TH.jpg"])
+    start_dt = parse_loose_datetime(plain_text_or_none(root, ".//ImagingStartTime/UTC"))
+    if not start_dt:
+        start_dt = parse_loose_datetime(plain_text_or_none(root, ".//ImagingCenterTime/UTC"))
+    if not start_dt:
+        start_dt = parse_loose_datetime(plain_text_or_none(root, ".//CreateDate"))
+    if not start_dt:
+        match = re.search(r"C1_(\d{14})", name)
+        start_dt = parse_loose_datetime(match.group(1)) if match else None
+
+    stop_dt = parse_loose_datetime(plain_text_or_none(root, ".//ImagingEndTime/UTC")) or start_dt
+    footprint = [
+        geog_node_point(root, "ImageGeogTL"),
+        geog_node_point(root, "ImageGeogTR"),
+        geog_node_point(root, "ImageGeogBR"),
+        geog_node_point(root, "ImageGeogBL"),
+    ]
+    footprint = [point for point in footprint if point]
+    if footprint and footprint[0] != footprint[-1]:
+        footprint.append(footprint[0])
+
+    orbit_direction = plain_text_or_none(root, ".//General/OrbitDirection") or ""
+    pass_direction = orbit_direction.split()[0].upper() if orbit_direction else "UNKNOWN"
+    satellite = plain_text_or_none(root, ".//General/Satellite") or "CAS500-1"
+    image_format = plain_text_or_none(root, ".//General/ImageFormat") or ""
+
+    return make_directory_scene(
+        product_dir=product_dir,
+        collection="Cas-1",
+        provider="KARI",
+        sensor_family="Optical",
+        mission=satellite,
+        satellite=satellite,
+        instrument_mode=plain_text_or_none(root, ".//General/Sensor") or "AEISS-C",
+        product_type=image_format or "Optical",
+        level=plain_text_or_none(root, ".//General/ProductLevel"),
+        polarization="",
+        start_dt=start_dt,
+        stop_dt=stop_dt,
+        orbit=plain_text_or_none(root, ".//General/OrbitNumber"),
+        pass_direction=pass_direction,
+        footprint=footprint,
+        metadata_ok=True,
+        quicklook_path=quicklook_path,
+        thumbnail_path=thumbnail_path,
+        extra_metadata={
+            "adapter": "cas1_directory",
+            "aux_path": str(aux_path),
+            "sensor": plain_text_or_none(root, ".//General/Sensor") or "",
+            "image_format": image_format,
+        },
+    )
+
+
 def scan_catalog(data_dir):
     data_path = Path(data_dir).expanduser().resolve()
     scenes = []
@@ -507,6 +569,16 @@ def scan_catalog(data_dir):
             if not is_stable_product_dir(product_dir):
                 continue
             scene = parse_kompsat5(product_dir)
+            if scene:
+                scenes.append(scene)
+
+    for cas1_root in (data_path / "Cas1", data_path / "Cas-1"):
+        if not cas1_root.exists():
+            continue
+        for product_dir in sorted(path for path in cas1_root.iterdir() if path.is_dir()):
+            if not is_stable_product_dir(product_dir):
+                continue
+            scene = parse_cas1(product_dir)
             if scene:
                 scenes.append(scene)
 

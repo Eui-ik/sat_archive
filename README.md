@@ -1,10 +1,10 @@
 # Satellite Image Archive
 
-브라우저 기반 위성 이미지 아카이브 플랫폼입니다. Sentinel-1, KOMPSAT-3, KOMPSAT-5 데이터를 지도 위에 표시하고, 이미지 목록/상세 정보/파일 다운로드/휴지통/사용자 관리를 제공합니다.
+브라우저 기반 위성 이미지 아카이브 플랫폼입니다. Sentinel-1, KOMPSAT-3, KOMPSAT-5, Cas-1 데이터를 지도 위에 표시하고, 이미지 목록/상세 정보/파일 다운로드/휴지통/사용자 관리를 제공합니다.
 
 ## 주요 기능
 
-- Sentinel-1, KOMPSAT-3, KOMPSAT-5 이미지 카탈로그 자동 스캔
+- Sentinel-1, KOMPSAT-3, KOMPSAT-5, Cas-1 이미지 카탈로그 자동 스캔
 - 위성 이미지 footprint 지도 표시
 - 미리보기 이미지, 촬영일, 궤도, 센서, 용량 등 메타데이터 확인
 - 사용자 로그인 및 관리자/일반 사용자 권한 관리
@@ -22,7 +22,8 @@
 /Volumes/SAT
 ├── Sentinel-1
 ├── Kompsat3
-└── Kompsat5
+├── Kompsat5
+└── Cas1
 ```
 
 휴지통 파일은 `/Volumes/SAT/.trash` 아래에 보관됩니다. 기본 보관 기간은 30일입니다.

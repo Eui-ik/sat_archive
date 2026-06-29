@@ -110,6 +110,21 @@ def bounds_intersect(bounds, bbox):
     )
 
 
+def scene_matches_period(scene, date_from, date_to):
+    scene_date = scene.get("date") or ""
+    if not scene_date:
+        return False
+    if date_from:
+        compare_value = scene_date[:7] if len(date_from) == 7 else scene_date
+        if compare_value < date_from:
+            return False
+    if date_to:
+        compare_value = scene_date[:7] if len(date_to) == 7 else scene_date
+        if compare_value > date_to:
+            return False
+    return True
+
+
 def bounded_int(value, default, minimum, maximum, field_name):
     try:
         number = int(value if value not in (None, "") else default)
@@ -892,7 +907,7 @@ class CatalogStore:
                 "date_max": raw_summary["date_end"],
                 "total_safe_size": sum(scene["safe_size"] for scene in self.scenes),
                 "total_safe_size_label": human_size(sum(scene["safe_size"] for scene in self.scenes)),
-                "supported_adapters": ["sentinel1_safe", "kompsat3_directory", "kompsat5_directory"],
+                "supported_adapters": ["sentinel1_safe", "kompsat3_directory", "kompsat5_directory", "cas1_directory"],
                 "future_ready": ["Sentinel-2 SAFE", "Landsat Collection", "GeoTIFF scenes"],
                 "source_summary": raw_summary,
             }
@@ -922,10 +937,8 @@ class CatalogStore:
             scenes = [scene for scene in scenes if scene["orbit_direction"] == direction]
         if family:
             scenes = [scene for scene in scenes if scene["satellite_family"] == family]
-        if date_from:
-            scenes = [scene for scene in scenes if scene["date"] >= date_from]
-        if date_to:
-            scenes = [scene for scene in scenes if scene["date"] <= date_to]
+        if date_from or date_to:
+            scenes = [scene for scene in scenes if scene_matches_period(scene, date_from, date_to)]
         if bbox:
             scenes = [scene for scene in scenes if bounds_intersect(scene.get("bbox"), bbox)]
         return scenes
